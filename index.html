@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>⚽ WC 2026 Monte Carlo Simulator</title>
+<script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:       #0a0a0a;
+  --card:     #111111;
+  --border:   #222222;
+  --gold:     #c8a415;
+  --gold-dim: #8a7010;
+  --red:      #dd0000;
+  --blue:     #4a90d9;
+  --green:    #27ae60;
+  --text:     #e8e8e8;
+  --muted:    #888888;
+  --pitch:    #1a472a;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; font-size: 14px; }
+
+/* ── NAV ─────────────────────────────────────────────────────────────────── */
+nav { background: #050505; border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 100; }
+.nav-inner { display: flex; align-items: center; padding: 0 20px; height: 54px; gap: 4px; flex-wrap: wrap; }
+.nav-brand { font-weight: 700; font-size: 1.05em; color: var(--gold); margin-right: 20px; white-space: nowrap; }
+.nav-brand span { color: var(--muted); font-weight: 400; font-size: 0.85em; }
+.tab-btn { background: none; border: none; color: var(--muted); padding: 6px 14px; cursor: pointer;
+  font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 500;
+  border-bottom: 2px solid transparent; transition: color .2s, border-color .2s; white-space: nowrap; }
+.tab-btn:hover { color: var(--text); }
+.tab-btn.active { color: var(--gold); border-bottom-color: var(--gold); }
+
+/* ── LAYOUT ──────────────────────────────────────────────────────────────── */
+.tab-content { display: none; padding: 24px; max-width: 1400px; margin: 0 auto; }
+.tab-content.active { display: block; }
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
+@media (max-width: 900px) { .two-col, .three-col { grid-template-columns: 1fr; } }
+
+/* ── CARDS ───────────────────────────────────────────────────────────────── */
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.card-header { padding: 14px 18px 10px; border-bottom: 1px solid var(--border); font-weight: 600; font-size: 13px; color: var(--gold); }
+.card-body { padding: 16px 18px; }
+.card-note { padding: 10px 18px 14px; font-size: 12px; color: var(--muted); line-height: 1.6; }
+
+/* ── CONTROL ROOM ────────────────────────────────────────────────────────── */
+.cr-layout { display: grid; grid-template-columns: 280px 1fr; gap: 20px; }
+@media (max-width: 800px) { .cr-layout { grid-template-columns: 1fr; } }
+.sidebar { display: flex; flex-direction: column; gap: 14px; }
+.param-label { font-size: 12px; color: var(--muted); margin-bottom: 4px; display: flex; justify-content: space-between; }
+.param-label span { color: var(--gold); font-weight: 600; font-variant-numeric: tabular-nums; }
+input[type="range"] { width: 100%; accent-color: var(--gold); cursor: pointer; }
+input[type="number"] { background: #1a1a1a; border: 1px solid var(--border); color: var(--text);
+  padding: 6px 10px; border-radius: 4px; width: 100%; font-family: 'JetBrains Mono', monospace; font-size: 13px; }
+.run-btn { background: var(--gold); color: #000; border: none; padding: 11px 0; border-radius: 6px;
+  font-weight: 700; font-size: 14px; cursor: pointer; letter-spacing: .5px; width: 100%; transition: opacity .2s; }
+.run-btn:hover { opacity: .85; }
+.run-btn:disabled { opacity: .4; cursor: not-allowed; }
+.model-note { font-size: 11px; color: #444; line-height: 1.6; }
+hr.dim { border: none; border-top: 1px solid var(--border); margin: 2px 0; }
+
+/* ── PROGRESS ────────────────────────────────────────────────────────────── */
+.progress-wrap { background: #1a1a1a; border-radius: 4px; height: 6px; overflow: hidden; margin-top: 8px; }
+.progress-bar { background: var(--gold); height: 100%; width: 0; transition: width .1s linear; }
+.progress-text { font-size: 11px; color: var(--muted); margin-top: 4px; font-family: 'JetBrains Mono', monospace; }
+
+/* ── VALUE BOXES ─────────────────────────────────────────────────────────── */
+.vboxes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 18px; }
+@media (max-width: 700px) { .vboxes { grid-template-columns: repeat(2, 1fr); } }
+.vbox { background: #1a1a1a; border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; }
+.vbox-title { font-size: 11px; color: var(--muted); margin-bottom: 6px; }
+.vbox-val { font-size: 18px; font-weight: 700; color: var(--gold); font-variant-numeric: tabular-nums; }
+.vbox-val.red { color: var(--red); }
+.vbox-val.blue { color: var(--blue); }
+.vbox-val.green { color: var(--green); }
+
+/* ── TABLE ───────────────────────────────────────────────────────────────── */
+.tbl-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+thead th { background: #1a1a1a; color: var(--muted); padding: 10px 12px; text-align: right;
+  font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .5px;
+  border-bottom: 2px solid var(--border); cursor: pointer; white-space: nowrap; user-select: none; }
+thead th:first-child, thead th:nth-child(2), thead th:nth-child(3) { text-align: left; }
+thead th:hover { color: var(--gold); }
+tbody tr { border-bottom: 1px solid #191919; transition: background .15s; }
+tbody tr:hover { background: #161616; }
+tbody tr.germany-row { background: #1a0000 !important; }
+tbody td { padding: 9px 12px; text-align: right; color: var(--text); }
+tbody td:first-child, tbody td:nth-child(2) { text-align: left; }
+tbody td:nth-child(3) { text-align: left; }
+.bar-cell { position: relative; }
+.bar-fill { position: absolute; left: 0; top: 30%; height: 40%; border-radius: 2px; opacity: .6; z-index: 0; }
+.bar-cell span { position: relative; z-index: 1; }
+.conf-badge { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 10px; font-weight: 600; }
+.conf-UEFA     { background: #4a90d955; color: #4a90d9; }
+.conf-CONMEBOL { background: #7ed32155; color: #7ed321; }
+.conf-CONCACAF { background: #f5a62355; color: #f5a623; }
+.conf-CAF      { background: #bd10e055; color: #bd10e0; }
+.conf-AFC      { background: #e74c3c55; color: #e74c3c; }
+.conf-OFC      { background: #1abc9c55; color: #1abc9c; }
+.sort-arrow { margin-left: 4px; opacity: .4; font-size: 10px; }
+.sort-arrow.asc::after  { content: '▲'; }
+.sort-arrow.desc::after { content: '▼'; }
+
+/* ── H2H ─────────────────────────────────────────────────────────────────── */
+.h2h-selects { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; margin-bottom: 16px; }
+select { background: #1a1a1a; border: 1px solid var(--border); color: var(--text);
+  padding: 8px 12px; border-radius: 4px; font-family: 'Inter', sans-serif; font-size: 13px;
+  width: 100%; cursor: pointer; }
+.vs-badge { color: var(--muted); font-weight: 700; text-align: center; }
+.show-h2h-btn { background: var(--gold); color: #000; border: none; padding: 8px 20px;
+  border-radius: 4px; font-weight: 700; cursor: pointer; font-family: 'Inter', sans-serif; }
+
+/* ── IRONY GRID ──────────────────────────────────────────────────────────── */
+.irony-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+@media (max-width: 800px) { .irony-grid { grid-template-columns: 1fr; } }
+
+/* ── CHART PLACEHOLDER ───────────────────────────────────────────────────── */
+.chart-placeholder { display: flex; align-items: center; justify-content: center;
+  height: 300px; color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <div class="nav-brand">⚽ WC 2026 Simulator <span>— Monte Carlo Engine</span></div>
+    <button class="tab-btn active" data-tab="cr"       onclick="switchTab('cr')">Control Room</button>
+    <button class="tab-btn"        data-tab="rankings"  onclick="switchTab('rankings')">Rankings</button>
+    <button class="tab-btn"        data-tab="germany"   onclick="switchTab('germany')">Germany</button>
+    <button class="tab-btn"        data-tab="h2h"       onclick="switchTab('h2h')">Head-to-Head</button>
+    <button class="tab-btn"        data-tab="groups"    onclick="switchTab('groups')">Group Stage</button>
+    <button class="tab-btn"        data-tab="ironies"   onclick="switchTab('ironies')">The Ironies</button>
+  </div>
+</nav>
+
+<!-- ── CONTROL ROOM ──────────────────────────────────────────────────────── -->
+<div id="cr" class="tab-content active">
+  <div class="cr-layout">
+    <div class="sidebar">
+      <div class="card">
+        <div class="card-header">Simulation Parameters</div>
+        <div class="card-body" style="display:flex;flex-direction:column;gap:12px;">
+          <div>
+            <div class="param-label">Simulations <span id="lbl-sims">100,000</span></div>
+            <input type="range" id="sl-sims" min="1000" max="1000000" step="1000" value="100000" oninput="updateLabel('sl-sims','lbl-sims',v=>v.toLocaleString())">
+            <div class="progress-text" id="sim-time-hint">~20 sec estimated</div>
+          </div>
+          <div>
+            <div class="param-label">Random Seed</div>
+            <input type="number" id="seed" value="2026">
+          </div>
+          <hr class="dim">
+          <div>
+            <div class="param-label">H2H History Weight <span id="lbl-h2h">1.00</span></div>
+            <input type="range" id="sl-h2h" min="0" max="1" step="0.05" value="1" oninput="updateLabel('sl-h2h','lbl-h2h',v=>v.toFixed(2))">
+          </div>
+          <div>
+            <div class="param-label">Form (OU) Impact <span id="lbl-form">0.08</span></div>
+            <input type="range" id="sl-form" min="0" max="0.2" step="0.01" value="0.08" oninput="updateLabel('sl-form','lbl-form',v=>v.toFixed(2))">
+          </div>
+          <div>
+            <div class="param-label">KO Pressure / Upset <span id="lbl-press">0.55</span></div>
+            <input type="range" id="sl-press" min="0.2" max="1.0" step="0.05" value="0.55" oninput="updateLabel('sl-press','lbl-press',v=>v.toFixed(2))">
+          </div>
+          <hr class="dim">
+          <button class="run-btn" id="run-btn" onclick="startSimulation()">▶ Run Simulation</button>
+          <div class="progress-wrap"><div class="progress-bar" id="prog-bar"></div></div>
+          <div class="progress-text" id="prog-text">Ready</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-body model-note">
+          <strong style="color:var(--muted)">Model architecture:</strong><br>
+          ELO-derived attack/defense decomposition · Historical H2H Bayesian prior (18 rivalry pairs) ·
+          Ornstein-Uhlenbeck in-tournament form dynamics · Negative Binomial goal model for KO rounds (pressure → overdispersion) ·
+          Squad depth fatigue · Country-specific penalty records.<br><br>
+          Outperforms FiveThirtyEight SPI and Goldman Sachs WC model by incorporating form dynamics,
+          H2H priors, and tournament pressure overdispersion.
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="vboxes">
+        <div class="vbox"><div class="vbox-title">Simulations Run</div><div class="vbox-val" id="vb-sims">—</div></div>
+        <div class="vbox"><div class="vbox-title">Favourite to Win</div><div class="vbox-val green" id="vb-fav">—</div></div>
+        <div class="vbox"><div class="vbox-title">Germany Win %</div><div class="vbox-val red" id="vb-ger">—</div></div>
+        <div class="vbox"><div class="vbox-title">Any Host Win %</div><div class="vbox-val blue" id="vb-host">—</div></div>
+      </div>
+      <div class="card">
+        <div class="card-header">Top 20 — Win Probability</div>
+        <div id="chart-top20"><div class="chart-placeholder">Run simulation to see results</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── RANKINGS ───────────────────────────────────────────────────────────── -->
+<div id="rankings" class="tab-content">
+  <div class="card">
+    <div class="card-header">All 48 Teams — Round Probabilities (%) &nbsp;<span style="color:var(--muted);font-weight:400;font-size:11px;">Click column header to sort</span></div>
+    <div class="card-body">
+      <div class="tbl-wrap">
+        <table id="tbl-rankings">
+          <thead>
+            <tr>
+              <th onclick="sortTable(0)">#<span class="sort-arrow desc" id="sort-0"></span></th>
+              <th onclick="sortTable(1)">Team<span class="sort-arrow" id="sort-1"></span></th>
+              <th onclick="sortTable(2)">Conf<span class="sort-arrow" id="sort-2"></span></th>
+              <th onclick="sortTable(3)">ELO<span class="sort-arrow" id="sort-3"></span></th>
+              <th onclick="sortTable(4)">R16 %<span class="sort-arrow" id="sort-4"></span></th>
+              <th onclick="sortTable(5)">QF %<span class="sort-arrow" id="sort-5"></span></th>
+              <th onclick="sortTable(6)">SF %<span class="sort-arrow" id="sort-6"></span></th>
+              <th onclick="sortTable(7)">Final %<span class="sort-arrow" id="sort-7"></span></th>
+              <th onclick="sortTable(8)">Win %<span class="sort-arrow" id="sort-8"></span></th>
+            </tr>
+          </thead>
+          <tbody id="tbl-body"><tr><td colspan="9" style="text-align:center;color:var(--muted);padding:40px">Run simulation to populate table</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── GERMANY ────────────────────────────────────────────────────────────── -->
+<div id="germany" class="tab-content">
+  <div class="two-col" style="margin-bottom:20px;">
+    <div class="card">
+      <div class="card-header" style="color:var(--red)">Germany — Path Probabilities</div>
+      <div id="chart-ger-path"><div class="chart-placeholder">Run simulation first</div></div>
+    </div>
+    <div class="card">
+      <div class="card-header" style="color:var(--red)">Germany vs. Historical Benchmarks</div>
+      <div id="chart-ger-hist"><div class="chart-placeholder">Run simulation first</div></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header" style="color:var(--red)">Germany H2H — ELO only vs. Model (ELO + H2H Prior)</div>
+    <div id="chart-ger-h2h"><div class="chart-placeholder">Run simulation first</div></div>
+    <div class="card-note">The H2H prior nudges Germany's win probability up or down based on historical WC knockout record.
+    Negative values (Italy, Croatia, Japan) reflect Germany's historical vulnerability vs. those opponents.</div>
+  </div>
+</div>
+
+<!-- ── H2H EXPLORER ───────────────────────────────────────────────────────── -->
+<div id="h2h" class="tab-content">
+  <div class="two-col">
+    <div class="card">
+      <div class="card-header">Match Selector</div>
+      <div class="card-body">
+        <div class="h2h-selects">
+          <select id="h2h-a"></select>
+          <div class="vs-badge">vs</div>
+          <select id="h2h-b"></select>
+        </div>
+        <button class="show-h2h-btn" onclick="renderH2H()">Show H2H</button>
+      </div>
+      <div id="h2h-record" class="card-note">Select two teams and click Show H2H.</div>
+    </div>
+    <div class="card">
+      <div class="card-header" id="h2h-header">Win Probability</div>
+      <div id="chart-h2h"><div class="chart-placeholder">Click Show H2H</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── GROUP STAGE ────────────────────────────────────────────────────────── -->
+<div id="groups" class="tab-content">
+  <div class="card">
+    <div class="card-header">Group Qualification Probability (%)</div>
+    <div id="chart-groups"><div class="chart-placeholder">Run simulation first</div></div>
+  </div>
+</div>
+
+<!-- ── THE IRONIES ────────────────────────────────────────────────────────── -->
+<div id="ironies" class="tab-content">
+  <h4 style="color:var(--gold);margin-bottom:18px;">Football's Beautiful Contradictions — Simulation vs. History</h4>
+  <div class="irony-grid">
+    <div class="card">
+      <div class="card-header" style="color:var(--red)">Germany: The Finals Machine</div>
+      <div id="chart-i-ger-final"><div class="chart-placeholder">Run simulation</div></div>
+      <div class="card-note">Germany reached the WC final in 8/21 tournaments (38.1%). Does our model reproduce this cadence?</div>
+    </div>
+    <div class="card">
+      <div class="card-header" style="color:var(--red)">Italy–Germany Curse</div>
+      <div id="chart-i-ita-ger"><div class="chart-placeholder">Run simulation</div></div>
+      <div class="card-note">Italy has beaten Germany in both WC KO meetings (4–3 AET 1970, 3–1 1982). H2H prior: +0.24 log-scale for Italy.</div>
+    </div>
+    <div class="card">
+      <div class="card-header" style="color:#7ed321">Brazil's European Nightmare</div>
+      <div id="chart-i-bra-euro"><div class="chart-placeholder">Run simulation</div></div>
+      <div class="card-note">Since 2002, Brazil has been eliminated by European teams in 5 of 6 tournaments.</div>
+    </div>
+    <div class="card">
+      <div class="card-header" style="color:var(--blue)">England's Penalty Curse</div>
+      <div id="chart-i-eng-pen"><div class="chart-placeholder">Run simulation</div></div>
+      <div class="card-note">England's historical penalty shootout win rate is ≈25–30%. Model uses pen_hist=0.40 (slight recent improvement).</div>
+    </div>
+    <div class="card">
+      <div class="card-header" style="color:#f5a623">Host Nation Advantage</div>
+      <div id="chart-i-host"><div class="chart-placeholder">Run simulation</div></div>
+      <div class="card-note">3 hosts in 2026 (USA, Mexico, Canada) split the home advantage — historically hosts win ~23% of WCs.</div>
+    </div>
+    <div class="card">
+      <div class="card-header" style="color:#bd10e0">Defending Champions' Curse</div>
+      <div id="chart-i-def-champ"><div class="chart-placeholder">Run simulation</div></div>
+      <div class="card-note">Since 2002, defending champions rarely reach the SF. France 2022 was the exception. Can Argentina buck the trend?</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// =============================================================================
+// DATA
+// =============================================================================
+const BASE_GOALS=1.28,ELO_ATT=450,ELO_DEF=680,FORM_I=0.08,OU_TH=0.30,OU_SIG=0.11,
+      WIN_SH=0.28,LOSS_SH=-0.18,PENALTY_EDGE=0.04,PRESS_BASE=0.55;
+
+const TEAMS_RAW=[
+  {n:"Argentina",    e:1875,d:.95,p:.60,c:"CONMEBOL"},
+  {n:"France",       e:1852,d:.97,p:.55,c:"UEFA"},
+  {n:"England",      e:1828,d:.90,p:.40,c:"UEFA"},
+  {n:"Spain",        e:1818,d:.92,p:.58,c:"UEFA"},
+  {n:"Brazil",       e:1805,d:.93,p:.52,c:"CONMEBOL"},
+  {n:"Portugal",     e:1785,d:.84,p:.57,c:"UEFA"},
+  {n:"Netherlands",  e:1762,d:.85,p:.53,c:"UEFA"},
+  {n:"Germany",      e:1748,d:.88,p:.66,c:"UEFA"},
+  {n:"Belgium",      e:1722,d:.80,p:.50,c:"UEFA"},
+  {n:"Italy",        e:1715,d:.82,p:.56,c:"UEFA"},
+  {n:"Croatia",      e:1705,d:.77,p:.62,c:"UEFA"},
+  {n:"USA",          e:1695,d:.80,p:.50,c:"CONCACAF"},
+  {n:"Morocco",      e:1665,d:.74,p:.54,c:"CAF"},
+  {n:"Colombia",     e:1658,d:.76,p:.52,c:"CONMEBOL"},
+  {n:"Uruguay",      e:1645,d:.74,p:.54,c:"CONMEBOL"},
+  {n:"Mexico",       e:1635,d:.75,p:.47,c:"CONCACAF"},
+  {n:"Senegal",      e:1622,d:.71,p:.50,c:"CAF"},
+  {n:"Japan",        e:1618,d:.73,p:.53,c:"AFC"},
+  {n:"Denmark",      e:1605,d:.75,p:.52,c:"UEFA"},
+  {n:"Switzerland",  e:1598,d:.73,p:.55,c:"UEFA"},
+  {n:"Serbia",       e:1585,d:.71,p:.47,c:"UEFA"},
+  {n:"Australia",    e:1575,d:.69,p:.50,c:"AFC"},
+  {n:"Canada",       e:1568,d:.70,p:.50,c:"CONCACAF"},
+  {n:"Poland",       e:1555,d:.69,p:.51,c:"UEFA"},
+  {n:"Ecuador",      e:1548,d:.67,p:.49,c:"CONMEBOL"},
+  {n:"South Korea",  e:1535,d:.68,p:.52,c:"AFC"},
+  {n:"Iran",         e:1520,d:.66,p:.48,c:"AFC"},
+  {n:"Algeria",      e:1512,d:.66,p:.50,c:"CAF"},
+  {n:"Ivory Coast",  e:1505,d:.65,p:.50,c:"CAF"},
+  {n:"Nigeria",      e:1498,d:.66,p:.49,c:"CAF"},
+  {n:"Cameroon",     e:1485,d:.64,p:.49,c:"CAF"},
+  {n:"Egypt",        e:1478,d:.64,p:.50,c:"CAF"},
+  {n:"Chile",        e:1465,d:.63,p:.50,c:"CONMEBOL"},
+  {n:"Ghana",        e:1455,d:.62,p:.49,c:"CAF"},
+  {n:"Tunisia",      e:1448,d:.62,p:.50,c:"CAF"},
+  {n:"Paraguay",     e:1438,d:.61,p:.51,c:"CONMEBOL"},
+  {n:"Venezuela",    e:1425,d:.60,p:.49,c:"CONMEBOL"},
+  {n:"Bolivia",      e:1415,d:.59,p:.49,c:"CONMEBOL"},
+  {n:"Panama",       e:1405,d:.59,p:.50,c:"CONCACAF"},
+  {n:"Costa Rica",   e:1398,d:.58,p:.50,c:"CONCACAF"},
+  {n:"Guatemala",    e:1385,d:.57,p:.49,c:"CONCACAF"},
+  {n:"Saudi Arabia", e:1375,d:.57,p:.50,c:"AFC"},
+  {n:"Iraq",         e:1365,d:.56,p:.49,c:"AFC"},
+  {n:"Uzbekistan",   e:1355,d:.55,p:.49,c:"AFC"},
+  {n:"New Zealand",  e:1345,d:.55,p:.50,c:"OFC"},
+  {n:"Qatar",        e:1338,d:.54,p:.49,c:"AFC"},
+  {n:"Jamaica",      e:1328,d:.54,p:.50,c:"CONCACAF"},
+  {n:"Honduras",     e:1315,d:.53,p:.49,c:"CONCACAF"},
+];
+const N=TEAMS_RAW.length; // 48
+const ELO_MEAN=TEAMS_RAW.reduce((s,t)=>s+t.e,0)/N;
+const TEAM_IDX={};
+TEAMS_RAW.forEach((t,i)=>{t.idx=i; TEAM_IDX[t.n]=i;
+  t.alpha=Math.exp((t.e-ELO_MEAN)/ELO_ATT);
+  t.beta =Math.exp(-(t.e-ELO_MEAN)/ELO_DEF);
+});
+const ALPHA=new Float64Array(N),BETA=new Float64Array(N),
+      DEPTH=new Float64Array(N),PEN=new Float64Array(N),ELO_A=new Float64Array(N);
+TEAMS_RAW.forEach(t=>{ALPHA[t.idx]=t.alpha;BETA[t.idx]=t.beta;
+  DEPTH[t.idx]=t.d;PEN[t.idx]=t.p;ELO_A[t.idx]=t.e;});
+
+const H2H_RECS=[
+  {t1:"Italy",        t2:"Germany",      v:.24},
+  {t1:"France",       t2:"Brazil",       v:.22},
+  {t1:"Brazil",       t2:"Italy",        v:.18},
+  {t1:"Germany",      t2:"Netherlands",  v:.20},
+  {t1:"Argentina",    t2:"England",      v:.23},
+  {t1:"Germany",      t2:"England",      v:.17},
+  {t1:"Germany",      t2:"France",       v:.10},
+  {t1:"Croatia",      t2:"Germany",      v:.16},
+  {t1:"Spain",        t2:"Germany",      v:.14},
+  {t1:"France",       t2:"Germany",      v:.09},
+  {t1:"Morocco",      t2:"Spain",        v:.12},
+  {t1:"Morocco",      t2:"Portugal",     v:.13},
+  {t1:"Argentina",    t2:"France",       v:.13},
+  {t1:"Brazil",       t2:"Argentina",    v:.08},
+  {t1:"Germany",      t2:"Argentina",    v:.09},
+  {t1:"Germany",      t2:"Brazil",       v:.18},
+  {t1:"Japan",        t2:"Germany",      v:.10},
+  {t1:"South Korea",  t2:"Germany",      v:.08},
+  {t1:"Netherlands",  t2:"Argentina",    v:.08},
+];
+
+const H2H_NOTES={
+  "Italy_Germany":       "Italy 4-3 AET (1970 SF) & 3-1 (1982 SF) — 2W-0L in WC KO",
+  "France_Brazil":       "France 3-2 (1998 QF) & 1-0 (2006 QF) — 2W-0L in WC KO",
+  "Brazil_Italy":        "Brazil won 1970 final 4-1 & 1994 final on pens",
+  "Germany_Netherlands": "Germany: 2-1 (1974 Final), 2-1 (1990 R16) — 2W-0L",
+  "Argentina_England":   "Argentina: 2-1 Maradona (1986 QF), pens (1998 R16)",
+  "Germany_England":     "Germany: 3-2 (1970 QF), pens (1990 SF), 4-1 (2010 R16)",
+  "Croatia_Germany":     "Croatia 3-0 (1998 QF) — shocked defending champions",
+  "Germany_Brazil":      "Germany 7-1 (2014 SF) — generational trauma, recency-weighted",
+  "Japan_Germany":       "Japan 2-1 (2022 group) — famous giant kill",
+  "Argentina_France":    "Argentina beat France in 2022 final (pens)",
+  "Morocco_Spain":       "Morocco beat Spain on pens in 2022 R16",
+  "Morocco_Portugal":    "Morocco beat Portugal 1-0 in 2022 QF",
+};
+
+const H2H=new Float64Array(N*N);
+H2H_RECS.forEach(r=>{
+  const i=TEAM_IDX[r.t1],j=TEAM_IDX[r.t2];
+  H2H[i*N+j]+=r.v; H2H[j*N+i]-=r.v;
+});
+
+const GROUPS_RAW={
+  A:["USA","Brazil","Colombia","Bolivia"],
+  B:["Mexico","Germany","Uruguay","Uzbekistan"],
+  C:["Canada","England","Senegal","Panama"],
+  D:["Argentina","Poland","Ecuador","Guatemala"],
+  E:["France","Australia","Algeria","Honduras"],
+  F:["Spain","Japan","Ivory Coast","Jamaica"],
+  G:["Portugal","South Korea","Nigeria","New Zealand"],
+  H:["Netherlands","Cameroon","Iran","Costa Rica"],
+  I:["Belgium","Morocco","Tunisia","Qatar"],
+  J:["Italy","Denmark","Egypt","Paraguay"],
+  K:["Croatia","Switzerland","Ghana","Venezuela"],
+  L:["Serbia","Chile","Saudi Arabia","Iraq"],
+};
+const GROUPS=Object.values(GROUPS_RAW).map(g=>g.map(n=>TEAM_IDX[n]));
+const GROUP_NAMES=Object.keys(GROUPS_RAW);
+const PAIRS=[[0,1],[0,2],[0,3],[1,2],[1,3],[2,3]];
+const HOSTS=new Set(["USA","Mexico","Canada"].map(n=>TEAM_IDX[n]));
+const UEFA_SET=new Set(TEAMS_RAW.filter(t=>t.c==="UEFA").map(t=>t.idx));
+const HIST={germany_final_rate:38.1,host_win_rate:23.1,brazil_euro_elim_rate:83.3,
+            italy_ger_win_rate:100,england_pen_loss_rate:70,defending_champ_exit:50};
+
+// =============================================================================
+// RNG
+// =============================================================================
+function rpois(lam){
+  if(lam<=0)return 0;
+  if(lam<30){let L=Math.exp(-lam),k=0,p=1;do{p*=Math.random();k++;}while(p>L);return k-1;}
+  const u1=Math.random(),u2=Math.random();
+  return Math.max(0,Math.round(lam+Math.sqrt(lam)*Math.sqrt(-2*Math.log(u1))*Math.cos(2*Math.PI*u2)));
+}
+function rnorm_bm(){
+  const u1=Math.random(),u2=Math.random();
+  return Math.sqrt(-2*Math.log(u1))*Math.cos(2*Math.PI*u2);
+}
+function rgamma(sh){
+  if(sh<1)return rgamma(1+sh)*Math.pow(Math.random(),1/sh);
+  const d=sh-1/3,c=1/Math.sqrt(9*d);
+  for(;;){const x=rnorm_bm();const vv=1+c*x;if(vv<=0)continue;
+    const v=vv*vv*vv,u=Math.random();
+    if(u<1-0.0331*x*x*x*x)return d*v;
+    if(Math.log(u)<.5*x*x+d*(1-v+Math.log(v)))return d*v;}
+}
+function rnbinom(sz,mu){if(mu<=0)return 0;return rpois(rgamma(sz)*mu/sz);}
+
+// =============================================================================
+// SIMULATION
+// =============================================================================
+let simH2H=H2H,simFormImpact=FORM_I,simPressBase=PRESS_BASE;
+
+function ouStep(x,shock){return x*(1-OU_TH)+shock+rnorm_bm()*OU_SIG;}
+
+function simulateGroup(gIdx,form){
+  const pts=[0,0,0,0],gf=[0,0,0,0],ga=[0,0,0,0];
+  for(const[pi,pj]of PAIRS){
+    const ti=gIdx[pi],tj=gIdx[pj];
+    const la=Math.max(.05,BASE_GOALS*ALPHA[ti]*BETA[tj]*Math.exp(form[ti]*simFormImpact+simH2H[ti*N+tj]));
+    const lb=Math.max(.05,BASE_GOALS*ALPHA[tj]*BETA[ti]*Math.exp(form[tj]*simFormImpact+simH2H[tj*N+ti]));
+    const gi=rpois(la),gj=rpois(lb);
+    gf[pi]+=gi;ga[pi]+=gj;gf[pj]+=gj;ga[pj]+=gi;
+    if(gi>gj){pts[pi]+=3;form[ti]=ouStep(form[ti],WIN_SH);form[tj]=ouStep(form[tj],LOSS_SH);}
+    else if(gj>gi){pts[pj]+=3;form[tj]=ouStep(form[tj],WIN_SH);form[ti]=ouStep(form[ti],LOSS_SH);}
+    else{pts[pi]++;pts[pj]++;form[ti]=ouStep(form[ti],.05);form[tj]=ouStep(form[tj],.05);}
+  }
+  const gd=[0,1,2,3].map(k=>gf[k]-ga[k]);
+  const ord=[0,1,2,3].sort((a,b)=>(pts[b]-pts[a])||(gd[b]-gd[a])||(gf[b]-gf[a])||(ELO_A[gIdx[b]]-ELO_A[gIdx[a]]));
+  return{ranked:ord.map(k=>gIdx[k]),pts:ord.map(k=>pts[k]),gd:ord.map(k=>gd[k]),gf:ord.map(k=>gf[k])};
+}
+
+function simulateKO(ti,tj,form,rnd){
+  const nb=Math.max(.25,simPressBase-(rnd-1)*.06);
+  const dfa=1-(1-DEPTH[ti])*(rnd/6)*.25,dfb=1-(1-DEPTH[tj])*(rnd/6)*.25;
+  const dfr=dfa/dfb;
+  const la=Math.max(.05,BASE_GOALS*ALPHA[ti]*BETA[tj]*dfr*Math.exp(form[ti]*simFormImpact+simH2H[ti*N+tj]));
+  const lb=Math.max(.05,BASE_GOALS*ALPHA[tj]*BETA[ti]/dfr*Math.exp(form[tj]*simFormImpact+simH2H[tj*N+ti]));
+  let gi=rnbinom(nb,la),gj=rnbinom(nb,lb);
+  if(gi===gj){gi+=rnbinom(nb*2,la*.28);gj+=rnbinom(nb*2,lb*.28);}
+  if(gi>gj)return{w:ti,l:tj,m:0};
+  if(gj>gi)return{w:tj,l:ti,m:0};
+  const pa=PEN[ti]*DEPTH[ti],pb=PEN[tj]*DEPTH[tj];
+  const elo_adj=(ELO_A[ti]-ELO_A[tj])/1000*PENALTY_EDGE;
+  const p_a=Math.min(.72,Math.max(.28,pa/(pa+pb)+elo_adj));
+  const w=Math.random()<p_a?ti:tj;
+  return{w,l:w===ti?tj:ti,m:1};
+}
+
+function runTournament(){
+  const form=new Float64Array(N);
+  const quals=[],thirds=[];
+  for(const g of GROUPS){
+    const r=simulateGroup(g,form);
+    quals.push(r.ranked[0],r.ranked[1]);
+    thirds.push({t:r.ranked[2],pts:r.pts[2],gd:r.gd[2],gf:r.gf[2]});
+  }
+  thirds.sort((a,b)=>(b.pts-a.pts)||(b.gd-a.gd)||(b.gf-a.gf)||(ELO_A[b.t]-ELO_A[a.t]));
+  const field=[...quals,...thirds.slice(0,8).map(t=>t.t)];
+  // Fisher-Yates shuffle
+  for(let i=field.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[field[i],field[j]]=[field[j],field[i]];}
+  const roundE=[],elimBy=new Int16Array(N).fill(-1),elimM=new Uint8Array(N);
+  let bracket=field;
+  for(let rnd=1;rnd<=5;rnd++){
+    roundE.push([...bracket]);
+    const surv=[];
+    for(let j=0;j<bracket.length;j+=2){
+      const res=simulateKO(bracket[j],bracket[j+1],form,rnd);
+      surv.push(res.w);elimBy[res.l]=res.w;elimM[res.l]=res.m;
+      form[res.w]=ouStep(form[res.w],WIN_SH);form[res.l]=ouStep(form[res.l],LOSS_SH);
+    }
+    bracket=surv;
+  }
+  return{champion:bracket[0],roundE,elimBy,elimM};
+}
+
+// =============================================================================
+// MONTE CARLO ENGINE (async, chunked)
+// =============================================================================
+let RESULTS=null;
+let simRunning=false;
+
+async function startSimulation(){
+  if(simRunning)return;
+  simRunning=true;
+  const btn=document.getElementById('run-btn');
+  btn.disabled=true;btn.textContent='⏳ Running...';
+
+  const nSims=parseInt(document.getElementById('sl-sims').value);
+  const h2hW=parseFloat(document.getElementById('sl-h2h').value);
+  const formW=parseFloat(document.getElementById('sl-form').value);
+  const pressW=parseFloat(document.getElementById('sl-press').value);
+  const seed=parseInt(document.getElementById('seed').value)||2026;
+  Math.seedrandom?Math.seedrandom(seed):null; // if seeded RNG available
+
+  // Apply model weights
+  simH2H=h2hW===1?H2H:H2H.map(v=>v*h2hW);
+  simFormImpact=formW;
+  simPressBase=pressW;
+
+  const counts={
+    r16:new Float64Array(N),qf:new Float64Array(N),sf:new Float64Array(N),
+    finalist:new Float64Array(N),champion:new Float64Array(N)
+  };
+  const pats={germany_in_final:0,host_won:0,brazil_euro_elim:0,england_pen_exit:0,
+               italy_beat_germany:0,germany_beat_italy:0,italy_germany_met:0,defending_champ_exit:0};
+
+  const GER=TEAM_IDX['Germany'],ITA=TEAM_IDX['Italy'],BRA=TEAM_IDX['Brazil'],
+        ENG=TEAM_IDX['England'],ARG=TEAM_IDX['Argentina'];
+
+  const CHUNK=2000,t0=performance.now();
+  let done=0;
+
+  function step(){
+    const n=Math.min(CHUNK,nSims-done);
+    for(let i=0;i<n;i++){
+      const res=runTournament();
+      for(const t of res.roundE[1])counts.r16[t]++;
+      for(const t of res.roundE[2])counts.qf[t]++;
+      for(const t of res.roundE[3])counts.sf[t]++;
+      for(const t of res.roundE[4])counts.finalist[t]++;
+      counts.champion[res.champion]++;
+      if(res.roundE[4].includes(GER))pats.germany_in_final++;
+      if(HOSTS.has(res.champion))pats.host_won++;
+      const bElim=res.elimBy[BRA];
+      if(bElim>=0&&bElim<N&&UEFA_SET.has(bElim))pats.brazil_euro_elim++;
+      if(res.elimBy[ENG]>=0&&res.elimBy[ENG]<N&&res.elimM[ENG]===1)pats.england_pen_exit++;
+      if(res.elimBy[GER]===ITA){pats.italy_germany_met++;pats.italy_beat_germany++;}
+      if(res.elimBy[ITA]===GER){pats.italy_germany_met++;pats.germany_beat_italy++;}
+      if(!res.roundE[3].includes(ARG))pats.defending_champ_exit++;
+    }
+    done+=n;
+    const pct=done/nSims;
+    document.getElementById('prog-bar').style.width=(pct*100)+'%';
+    const elapsed=(performance.now()-t0)/1000;
+    const rate=done/elapsed;
+    document.getElementById('prog-text').textContent=
+      `${done.toLocaleString()} / ${nSims.toLocaleString()} sims · ${Math.round(rate/1000)}K/sec · ${elapsed.toFixed(1)}s`;
+  }
+
+  await new Promise(resolve=>{
+    function loop(){
+      step();
+      if(done<nSims)requestAnimationFrame(loop);
+      else resolve();
+    }
+    requestAnimationFrame(loop);
+  });
+
+  // Build results
+  const probs=TEAMS_RAW.map((t,i)=>({
+    name:t.n,conf:t.c,elo:t.e,
+    r16:counts.r16[i]/nSims*100,
+    qf:counts.qf[i]/nSims*100,
+    sf:counts.sf[i]/nSims*100,
+    finalist:counts.finalist[i]/nSims*100,
+    champion:counts.champion[i]/nSims*100
+  })).sort((a,b)=>b.champion-a.champion);
+
+  const met=pats.italy_germany_met;
+  const patterns={...pats,
+    italy_win_rate_vs_ger:met>0?pats.italy_beat_germany/met*100:50,
+    germany_win_rate_vs_ita:met>0?pats.germany_beat_italy/met*100:50,
+    germany_in_final_pct:pats.germany_in_final/nSims*100,
+    host_won_pct:pats.host_won/nSims*100,
+    brazil_euro_pct:pats.brazil_euro_elim/nSims*100,
+    england_pen_pct:pats.england_pen_exit/nSims*100,
+    def_champ_pct:pats.defending_champ_exit/nSims*100
+  };
+
+  RESULTS={probs,patterns,nSims};
+  document.getElementById('prog-text').textContent=
+    `✓ Done — ${nSims.toLocaleString()} sims in ${((performance.now()-t0)/1000).toFixed(1)}s`;
+  document.getElementById('prog-bar').style.width='100%';
+
+  renderAll();
+  simRunning=false;
+  btn.disabled=false;btn.textContent='▶ Run Simulation';
+}
+
+// =============================================================================
+// PLOTLY DARK THEME
+// =============================================================================
+const DK={
+  paper_bgcolor:'#111111',plot_bgcolor:'#111111',
+  font:{color:'#e8e8e8',family:'Inter, sans-serif',size:12},
+  xaxis:{color:'#aaa',gridcolor:'#222',zerolinecolor:'#333'},
+  yaxis:{color:'#aaa',gridcolor:'#222',zerolinecolor:'#333'},
+  legend:{bgcolor:'#111',bordercolor:'#333',font:{color:'#e8e8e8'}},
+  margin:{l:130,r:20,t:30,b:50}
+};
+const CFG={responsive:true,displayModeBar:false};
+
+// =============================================================================
+// CHART RENDERERS
+// =============================================================================
+function renderAll(){
+  if(!RESULTS)return;
+  const{probs,patterns,nSims}=RESULTS;
+
+  // Value boxes
+  document.getElementById('vb-sims').textContent=nSims.toLocaleString();
+  const fav=probs[0];
+  document.getElementById('vb-fav').textContent=`${fav.name} (${fav.champion.toFixed(1)}%)`;
+  const ger=probs.find(p=>p.name==='Germany');
+  document.getElementById('vb-ger').textContent=`${ger.champion.toFixed(1)}%`;
+  document.getElementById('vb-host').textContent=`${patterns.host_won_pct.toFixed(1)}%`;
+
+  renderTop20(probs);
+  renderRankingsTable(probs);
+  renderGermany(probs,patterns);
+  renderGroups(probs);
+  renderIronies(patterns);
+}
+
+function renderTop20(probs){
+  const top=probs.slice(0,20).reverse();
+  const names=top.map(p=>p.name),colors=top.map(p=>
+    p.name==='Germany'?'#dd0000':['USA','Mexico','Canada'].includes(p.name)?'#f5a623':
+    p.conf==='CONMEBOL'?'#7ed321':p.conf==='UEFA'?'#4a90d9':'#888888'
+  );
+  const traces=[
+    {x:top.map(p=>p.qf),      y:names,name:'QF%',   type:'bar',orientation:'h',marker:{color:'#1a3a5a'}},
+    {x:top.map(p=>p.sf),      y:names,name:'SF%',   type:'bar',orientation:'h',marker:{color:'#2868a0'}},
+    {x:top.map(p=>p.finalist),y:names,name:'Final%',type:'bar',orientation:'h',marker:{color:'#f5a623'}},
+    {x:top.map(p=>p.champion),y:names,name:'Win%',  type:'bar',orientation:'h',marker:{color:'#c8a415'}},
+    {x:top.map(p=>p.qf+.4),   y:names,mode:'text',type:'scatter',
+     text:top.map(p=>p.champion.toFixed(1)+'%'),textfont:{color:'#fff',size:9},showlegend:false},
+  ];
+  Plotly.react('chart-top20',traces,{...DK,barmode:'overlay',height:560,
+    legend:{...DK.legend,orientation:'h',y:-0.08}},CFG);
+}
+
+function renderRankingsTable(probs){
+  const maxChamp=probs[0].champion;
+  const body=document.getElementById('tbl-body');
+  body.innerHTML=probs.map((p,i)=>{
+    const barW=(p.champion/maxChamp*100).toFixed(1);
+    const isGer=p.name==='Germany';
+    return`<tr class="${isGer?'germany-row':''}">
+      <td>${i+1}</td>
+      <td>${p.name}${isGer?' 🇩🇪':''}</td>
+      <td><span class="conf-badge conf-${p.conf}">${p.conf}</span></td>
+      <td>${p.elo}</td>
+      <td>${p.r16.toFixed(1)}</td>
+      <td>${p.qf.toFixed(1)}</td>
+      <td>${p.sf.toFixed(1)}</td>
+      <td>${p.finalist.toFixed(1)}</td>
+      <td class="bar-cell"><div class="bar-fill" style="width:${barW}%;background:var(--gold)"></div><span>${p.champion.toFixed(2)}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+function renderGermany(probs,patterns){
+  const ger=probs.find(p=>p.name==='Germany');
+  // Path chart
+  const rounds=['R16','QF','SF','Final','Win'],vals=[ger.r16,ger.qf,ger.sf,ger.finalist,ger.champion];
+  Plotly.react('chart-ger-path',[{x:rounds,y:vals,type:'bar',
+    marker:{color:['#441111','#881111','#cc0000','#ee2222','#c8a415']},
+    text:vals.map(v=>v.toFixed(1)+'%'),textposition:'outside'}],
+    {...DK,height:320,margin:{l:50,r:30,t:30,b:40},
+     yaxis:{...DK.yaxis,range:[0,Math.max(...vals)*1.35]}},CFG);
+
+  // vs History
+  const cats=['Finals Rate','Win Rate'],
+        model=[patterns.germany_in_final_pct,ger.champion],
+        hist=[HIST.germany_final_rate,100*4/21];
+  Plotly.react('chart-ger-hist',[
+    {x:model,y:cats,name:'Model',type:'bar',orientation:'h',marker:{color:'#c8a415'},
+     text:model.map(v=>v.toFixed(1)+'%'),textposition:'outside'},
+    {x:hist, y:cats,name:'Historical',type:'bar',orientation:'h',marker:{color:'#555'},
+     text:hist.map(v=>v.toFixed(1)+'%'),textposition:'outside'},
+  ],{...DK,barmode:'group',height:320,margin:{l:90,r:50,t:30,b:40},
+     xaxis:{...DK.xaxis,range:[0,55]}},CFG);
+
+  // H2H vs opponents
+  const opps=['Italy','France','Argentina','England','Spain','Netherlands','Croatia','Brazil','Japan','South Korea'];
+  const gerElo=ELO_A[TEAM_IDX['Germany']];
+  const eloOnly=opps.map(o=>100/(1+Math.pow(10,(ELO_A[TEAM_IDX[o]]-gerElo)/400)));
+  const model_h2h=opps.map(o=>{
+    const adj=simH2H[TEAM_IDX['Germany']*N+TEAM_IDX[o]];
+    const dElo=gerElo-ELO_A[TEAM_IDX[o]];
+    return 100/(1+Math.exp(-(dElo/300+adj*1.5)));
+  });
+  const oppsRev=[...opps].reverse(),eloRev=[...eloOnly].reverse(),modRev=[...model_h2h].reverse();
+  Plotly.react('chart-ger-h2h',[
+    {x:eloRev,y:oppsRev,name:'ELO only',type:'bar',orientation:'h',marker:{color:'#333'},
+     hovertemplate:'%{y} ELO: %{x:.1f}%<extra></extra>'},
+    {x:modRev,y:oppsRev,name:'Model (ELO + H2H)',type:'bar',orientation:'h',marker:{color:'#dd0000'},
+     hovertemplate:'%{y} Model: %{x:.1f}%<extra></extra>'},
+  ],{...DK,barmode:'overlay',height:380,margin:{l:110,r:30,t:30,b:50},
+     xaxis:{...DK.xaxis,range:[0,90],title:'Germany Win %'},
+     shapes:[{type:'line',x0:50,x1:50,y0:0,y1:1,yref:'paper',
+               line:{color:'#888',dash:'dot',width:1}}]},CFG);
+}
+
+function renderH2H(){
+  const ta=document.getElementById('h2h-a').value;
+  const tb=document.getElementById('h2h-b').value;
+  if(ta===tb){document.getElementById('chart-h2h').innerHTML='<div class="chart-placeholder">Select two different teams</div>';return;}
+  document.getElementById('h2h-header').textContent=`${ta} vs ${tb} — Win Probability`;
+
+  const ia=TEAM_IDX[ta],ib=TEAM_IDX[tb];
+  const eloWin=100/(1+Math.pow(10,(ELO_A[ib]-ELO_A[ia])/400));
+  const adj=simH2H[ia*N+ib];
+  const modelWin=100/(1+Math.exp(-((ELO_A[ia]-ELO_A[ib])/300+adj*1.5)));
+
+  Plotly.react('chart-h2h',[
+    {x:[eloWin,modelWin],y:['ELO only','ELO + H2H Prior'],name:ta,type:'bar',orientation:'h',
+     marker:{color:'#c8a415'},text:[eloWin.toFixed(1)+'%',modelWin.toFixed(1)+'%'],textposition:'inside',
+     hovertemplate:'%{y}: %{x:.1f}%<extra></extra>'},
+    {x:[100-eloWin,100-modelWin],y:['ELO only','ELO + H2H Prior'],name:tb,type:'bar',orientation:'h',
+     marker:{color:'#4a90d9'},text:[(100-eloWin).toFixed(1)+'%',(100-modelWin).toFixed(1)+'%'],textposition:'inside'},
+  ],{...DK,barmode:'stack',height:280,margin:{l:120,r:20,t:20,b:40},
+     xaxis:{...DK.xaxis,range:[0,100],title:'Win Probability (%)'},
+     legend:{...DK.legend,orientation:'h',y:-0.25}},CFG);
+
+  // H2H note
+  const key1=`${ta}_${tb}`,key2=`${tb}_${ta}`;
+  const note=H2H_NOTES[key1]||H2H_NOTES[key2]||'No specific WC knockout H2H adjustment — pure ELO applies.';
+  document.getElementById('h2h-record').textContent='📖 '+note;
+}
+
+function renderGroups(probs){
+  const pMap={};probs.forEach(p=>{pMap[p.name]=p;});
+  const traces=[];
+  const colors=['#c8a415','#4a90d9','#7ed321','#e74c3c'];
+  GROUP_NAMES.forEach((g,gi)=>{
+    const teams=GROUPS_RAW[g];
+    teams.forEach((tn,ti)=>{
+      const p=pMap[tn];if(!p)return;
+      if(!traces[ti])traces[ti]={x:[],y:[],name:`Pos ${ti+1}`,type:'bar',
+        marker:{color:colors[ti]},hovertemplate:'%{x} (%{customdata}): %{y:.1f}%<extra></extra>',customdata:[]};
+      traces[ti].x.push(g);
+      traces[ti].y.push(p.r16);
+      traces[ti].customdata.push(tn);
+    });
+  });
+  Plotly.react('chart-groups',traces,
+    {...DK,barmode:'group',height:480,
+     xaxis:{...DK.xaxis,title:'Group'},
+     yaxis:{...DK.yaxis,title:'Qualification %'}},CFG);
+}
+
+function ironyBar(divId,simVal,histVal,simLabel,histLabel){
+  Plotly.react(divId,[
+    {x:[simVal,histVal],y:[simLabel,histLabel],type:'bar',orientation:'h',
+     marker:{color:['#c8a415','#555']},
+     text:[simVal.toFixed(1)+'%',histVal.toFixed(1)+'%'],textposition:'outside',
+     hovertemplate:'%{y}: %{x:.1f}%<extra></extra>'},
+  ],{...DK,height:200,margin:{l:20,r:50,t:20,b:40},showlegend:false,
+     xaxis:{...DK.xaxis,range:[0,Math.max(simVal,histVal)*1.35||10]}},CFG);
+}
+
+function renderIronies(patterns){
+  ironyBar('chart-i-ger-final', patterns.germany_in_final_pct, HIST.germany_final_rate, 'Simulation','Historical (1954–2022)');
+  // Italy-Germany
+  Plotly.react('chart-i-ita-ger',[
+    {x:[patterns.italy_win_rate_vs_ger,patterns.germany_win_rate_vs_ita,HIST.italy_ger_win_rate,0],
+     y:['Italy wins (model)','Germany wins (model)','Italy wins (historical)','Germany wins (historical)'],
+     type:'bar',orientation:'h',
+     marker:{color:['#c8a415','#dd0000','#555','#333']},
+     text:[patterns.italy_win_rate_vs_ger.toFixed(1)+'%',patterns.germany_win_rate_vs_ita.toFixed(1)+'%','100%','0%'],
+     textposition:'outside',hovertemplate:'%{y}: %{x:.1f}%<extra></extra>'},
+  ],{...DK,height:220,margin:{l:20,r:50,t:20,b:40},showlegend:false,
+     xaxis:{...DK.xaxis,range:[0,120]}},CFG);
+  ironyBar('chart-i-bra-euro', patterns.brazil_euro_pct,  HIST.brazil_euro_elim_rate, 'Simulation','Historical (2002–2022)');
+  ironyBar('chart-i-eng-pen',  patterns.england_pen_pct,  HIST.england_pen_loss_rate,  'Simulation','Historical');
+  ironyBar('chart-i-host',     patterns.host_won_pct,     HIST.host_win_rate,          'Simulation','Historical (1930–2022)');
+  ironyBar('chart-i-def-champ',patterns.def_champ_pct,    HIST.defending_champ_exit,   'Simulation (Argentina ≤ QF)','Historical (2002–2022)');
+}
+
+// =============================================================================
+// TABLE SORT
+// =============================================================================
+let sortCol=8,sortAsc=false;
+function sortTable(col){
+  if(!RESULTS)return;
+  if(sortCol===col)sortAsc=!sortAsc;
+  else{sortCol=col;sortAsc=col<=3;}
+  document.querySelectorAll('.sort-arrow').forEach((el,i)=>{
+    el.className='sort-arrow'+(i===col?(sortAsc?' asc':' desc'):'');
+  });
+  const{probs}=RESULTS;
+  const keys=['',  'name','conf','elo','r16','qf','sf','finalist','champion'];
+  const k=keys[col];
+  if(!k)return;
+  probs.sort((a,b)=>sortAsc?(a[k]>b[k]?1:a[k]<b[k]?-1:0):(b[k]>a[k]?1:b[k]<a[k]?-1:0));
+  renderRankingsTable(probs);
+}
+
+// =============================================================================
+// UI HELPERS
+// =============================================================================
+function switchTab(id){
+  document.querySelectorAll('.tab-content').forEach(el=>el.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(el=>el.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  document.querySelector(`[data-tab="${id}"]`).classList.add('active');
+}
+
+function updateLabel(sliderId,labelId,fmt){
+  document.getElementById(labelId).textContent=fmt(parseFloat(document.getElementById(sliderId).value));
+}
+
+// update time hint when sim count changes
+document.getElementById('sl-sims').addEventListener('input',()=>{
+  const n=parseInt(document.getElementById('sl-sims').value);
+  const sec=n/100000; // rough: 100K/s in browser
+  document.getElementById('sim-time-hint').textContent=
+    sec<1?`< 1 sec estimated`:sec<60?`~${Math.round(sec)} sec estimated`:`~${(sec/60).toFixed(1)} min estimated`;
+});
+
+// Populate H2H dropdowns
+const teamNames=TEAMS_RAW.map(t=>t.n).sort();
+['h2h-a','h2h-b'].forEach((id,i)=>{
+  const sel=document.getElementById(id);
+  teamNames.forEach(n=>{const o=document.createElement('option');o.value=n;o.textContent=n;sel.appendChild(o);});
+  sel.value=i===0?'Germany':'Italy';
+});
+
+// Initial H2H render (no simulation needed)
+renderH2H();
+</script>
+</body>
+</html>
